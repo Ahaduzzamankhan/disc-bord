@@ -3,7 +3,6 @@ from discord.ext import commands
 from discord import app_commands
 import google.genai as genai
 from flask import Flask
-from dotenv import load_dotenv
 import os
 import threading
 import time
@@ -17,26 +16,19 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-# ── .env bootstrap ────────────────────────────────────────────────────────────
-if not os.path.exists('.env'):
-    with open('.env', 'w') as f:
-        f.write('DISCORD_TOKEN=your_discord_bot_token_here\n')
-        f.write('GEMINI_API_KEY=your_gemini_api_key_here\n')
-    log.info("Created .env template. Fill in your tokens and restart.")
-
-load_dotenv()
-DISCORD_TOKEN  = os.getenv('DISCORD_TOKEN')
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+# ── Tokens ────────────────────────────────────────────────────────────────────
+DISCORD_TOKEN = "MTQ4MTE3Njc0NTY0OTM3NzMyMg.GCVjZ7.ZuGvU1RgOlNB0LjQLdRmBwu7Xg2sM1UB89qxpk"
+GEMINI_API_KEY = "AIzaSyAV4MA-fXmfyjQ_MR5HZ0PIx-KFBdTqwVY"
 
 run_bot = True
 if not DISCORD_TOKEN or not GEMINI_API_KEY:
-    log.error("Missing DISCORD_TOKEN and/or GEMINI_API_KEY. Set them in .env or Render dashboard.")
+    log.error("Missing DISCORD_TOKEN and/or GEMINI_API_KEY.")
     run_bot = False
 
 # ── Gemini ────────────────────────────────────────────────────────────────────
 if run_bot:
     genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.5-flash')
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
 # ── Bot setup ─────────────────────────────────────────────────────────────────
 intents = discord.Intents.all()
@@ -225,15 +217,32 @@ async def ask_command(interaction: discord.Interaction, question: str):
 
 # ── /roast ────────────────────────────────────────────────────────────────────
 @bot.tree.command(name="roast", description="Playfully roast a server member 🔥")
-@app_commands.describe(member="The member to roast")
-async def roast_command(interaction: discord.Interaction, member: discord.Member):
+@app_commands.describe(member="The member to roast (name or mention)")
+async def roast_command(interaction: discord.Interaction, member: str):
     await interaction.response.defer(thinking=True)
+    # Try to find the member
+    target = None
+    if interaction.guild:
+        # Check if it's a mention
+        if member.startswith('<@') and member.endswith('>'):
+            try:
+                user_id = int(member.strip('<@!>'))
+                target = interaction.guild.get_member(user_id)
+            except:
+                pass
+        if not target:
+            # Try to find by name
+            target = discord.utils.find(lambda m: m.display_name.lower() == member.lower() or str(m).lower() == member.lower(), interaction.guild.members)
+    if not target:
+        target_name = member
+    else:
+        target_name = target.display_name
     prompt = (
-        f"Write a fun, light-hearted, PG-13 roast for a Discord user named {member.display_name}. "
+        f"Write a fun, light-hearted, PG-13 roast for a Discord user named {target_name}. "
         "Keep it playful and not mean-spirited. 3–5 sentences max."
     )
     text = await _gemini(prompt)
-    await interaction.followup.send(f"🔥 **Roasting {member.mention}:**\n{text}")
+    await interaction.followup.send(f"🔥 **Roasting {target_name}:**\n{text}")
 
 
 # ── /trivia ───────────────────────────────────────────────────────────────────
